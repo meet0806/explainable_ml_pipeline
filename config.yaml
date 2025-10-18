@@ -1,0 +1,59 @@
+# Configuration for Explainable ML Agentic Pipeline
+
+project:
+  name: "Explainable ML Pipelines"
+  version: "1.0.0"
+  domain: ["healthcare", "finance"]
+
+paths:
+  data_dir: "./data"
+  models_dir: "./models"
+  logs_dir: "./logs"
+  results_dir: "./results"
+
+agents:
+  eda:
+    enabled: true
+    max_features_to_analyze: 50
+    correlation_threshold: 0.7
+    missing_value_threshold: 0.3
+
+  feature_engineering:
+    enabled: true
+    scaling_method: "standard" # standard, minmax, robust
+    encoding_method: "onehot" # onehot, label, target
+    feature_selection_method: "importance" # importance, mutual_info, rfe
+
+  model_tuning:
+    enabled: true
+    algorithms:
+      - "random_forest"
+      - "xgboost"
+      - "logistic_regression"
+    cv_folds: 5
+    max_trials: 50
+
+  evaluator:
+    enabled: true
+    metrics:
+      classification: ["accuracy", "precision", "recall", "f1", "roc_auc"]
+      regression: ["rmse", "mae", "r2", "mape"]
+    explainability_methods: ["shap", "lime"]
+
+  judge:
+    enabled: true
+    min_performance_threshold: 0.75
+    max_retrain_cycles: 3
+    performance_decline_threshold: 0.05
+
+llm:
+  provider: "ollama" # ollama, openai, anthropic
+  model: "llama3.1:8b" # llama3.1:8b (recommended), llama3.1:70b, mistral:7b
+  temperature: 0.7
+  max_tokens: 1000
+  reasoning_enabled: true # Set to true to enable LLM reasoning (requires Ollama installed)
+
+orchestrator:
+  execution_mode: "sequential" # sequential, parallel
+  save_intermediate_results: true
+  verbose: true
