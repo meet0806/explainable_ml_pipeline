@@ -489,8 +489,104 @@ def main():
                         unsafe_allow_html=True
                     )
             
+            # All Models Comparison
+            st.subheader("🔬 All Models Trained & Compared")
+            
+            # Extract all models from iterations
+            all_models_data = []
+            for iter_key, iter_data in results.get('all_iterations', {}).items():
+                if 'model_tuning' in iter_data:
+                    model_tuning = iter_data['model_tuning']
+                    for model in model_tuning.get('all_models', []):
+                        all_models_data.append({
+                            'Model': model['algorithm'].replace('_', ' ').title(),
+                            'CV Score': f"{model['cv_score']:.4f}",
+                            'CV Score (numeric)': model['cv_score'],
+                            'Parameters': ', '.join([f"{k}={v}" for k, v in model.get('best_params', {}).items()][:3]),
+                            'Selected': '✅ Best' if model['algorithm'] == final_results['best_model'] else ''
+                        })
+            
+            if all_models_data:
+                # Summary metrics
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Models Trained", len(all_models_data))
+                with col2:
+                    best_model_name = final_results['best_model'].replace('_', ' ').title()
+                    st.metric("Best Model", best_model_name)
+                with col3:
+                    best_cv_score = max([m['CV Score (numeric)'] for m in all_models_data])
+                    st.metric("Best CV Score", f"{best_cv_score:.4f}")
+                
+                # Create DataFrame
+                models_df = pd.DataFrame(all_models_data)
+                models_df = models_df.drop('CV Score (numeric)', axis=1)  # Remove numeric column used for calculations
+                
+                # Display as styled table
+                st.dataframe(
+                    models_df,
+                    use_container_width=True,
+                    hide_index=True
+                )
+                
+                # Visual comparison chart
+                if len(all_models_data) > 1:
+                    col1, col2 = st.columns([2, 1])
+                    
+                    with col1:
+                        fig = go.Figure()
+                        
+                        colors = ['#2ecc71' if m['Selected'] == '✅ Best' else '#3498db' for m in all_models_data]
+                        
+                        fig.add_trace(go.Bar(
+                            x=[m['Model'] for m in all_models_data],
+                            y=[float(m['CV Score']) for m in all_models_data],
+                            marker_color=colors,
+                            text=[m['CV Score'] for m in all_models_data],
+                            textposition='auto',
+                            hovertemplate='<b>%{x}</b><br>CV Score: %{y:.4f}<extra></extra>'
+                        ))
+                        
+                        fig.update_layout(
+                            title="Cross-Validation Scores Comparison",
+                            xaxis_title="Model",
+                            yaxis_title="CV Score",
+                            height=400,
+                            showlegend=False,
+                            yaxis_range=[0, 1.05]
+                        )
+                        
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    with col2:
+                        st.markdown("### 📊 Model Ranking")
+                        
+                        # Sort by CV score
+                        sorted_models = sorted(all_models_data, key=lambda x: x['CV Score (numeric)'], reverse=True)
+                        
+                        for i, model in enumerate(sorted_models, 1):
+                            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+                            st.markdown(f"{medal} **{model['Model']}**")
+                            st.caption(f"CV Score: {model['CV Score']}")
+                
+                # Show detailed parameters in expander
+                with st.expander("🔧 View All Model Parameters"):
+                    for iter_key, iter_data in results.get('all_iterations', {}).items():
+                        if 'model_tuning' in iter_data:
+                            model_tuning = iter_data['model_tuning']
+                            for model in model_tuning.get('all_models', []):
+                                is_best = model['algorithm'] == final_results['best_model']
+                                status = "✅ **SELECTED**" if is_best else ""
+                                
+                                st.markdown(f"**{model['algorithm'].replace('_', ' ').title()}** {status}")
+                                st.write(f"CV Score: `{model['cv_score']:.6f}`")
+                                st.json(model.get('best_params', {}))
+                                st.divider()
+            else:
+                st.info("Model comparison data not available")
+            
             # Metrics
-            st.subheader("📈 Performance Metrics")
+            st.subheader("📈 Best Model Performance Metrics")
             
             metrics = final_results['metrics']
             task_type = st.session_state['task_type']

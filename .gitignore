@@ -42,7 +42,7 @@ env/
 .env.local
 
 # Project specific
-data/*.csv
+# data/*.csv
 data/*.parquet
 data/*.xlsx
 !data/sample_data_generator.py
