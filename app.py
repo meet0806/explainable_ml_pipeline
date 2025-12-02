@@ -383,77 +383,151 @@ def main():
                 config['agents']['judge']['max_retrain_cycles'] = max_retrain
                 
                 # Run pipeline
-                with st.spinner("🔄 Pipeline running... This may take a few minutes."):
-                    try:
-                        # Initialize orchestrator
-                        orchestrator = Orchestrator(config)
-                        
-                        # Create progress placeholder
+                try:
+                    # Initialize orchestrator
+                    orchestrator = Orchestrator(config)
+                    
+                    # Create progress placeholders
+                    progress_container = st.container()
+                    with progress_container:
+                        st.markdown("### 🔄 Pipeline Execution Progress")
                         progress_bar = st.progress(0)
                         status_text = st.empty()
+                        agent_status = st.empty()
+                        time_elapsed = st.empty()
+                    
+                    import time
+                    start_time = time.time()
+                    
+                    # Progress tracking state
+                    agent_states = {
+                        "eda": "⏸️ Waiting",
+                        "feature_engineering": "⏸️ Waiting",
+                        "model_tuning": "⏸️ Waiting",
+                        "evaluator": "⏸️ Waiting",
+                        "judge": "⏸️ Waiting"
+                    }
+                    
+                    # Progress callback function
+                    def update_progress(agent_name, iteration):
+                        # Map internal names to display names
+                        display_names = {
+                            "eda": "EDA Agent",
+                            "feature_engineering": "Feature Engineering",
+                            "model_tuning": "Model Tuning",
+                            "evaluator": "Evaluator",
+                            "judge": "Judge"
+                        }
                         
-                        # Run pipeline
-                        status_text.text("Initializing agents...")
-                        progress_bar.progress(10)
+                        # Update states
+                        for key in agent_states.keys():
+                            if key == agent_name:
+                                agent_states[key] = "⏳ Running..."
+                            elif list(agent_states.keys()).index(key) < list(agent_states.keys()).index(agent_name):
+                                agent_states[key] = "✅ Complete"
                         
-                        results = orchestrator.run_pipeline(
-                            data=df,
-                            target_column=target_column,
-                            task_type=task_type,
-                            domain=domain
+                        # Calculate progress
+                        progress_map = {"eda": 20, "feature_engineering": 40, "model_tuning": 60, "evaluator": 80, "judge": 90}
+                        progress = progress_map.get(agent_name, 10)
+                        
+                        # Update UI
+                        progress_bar.progress(progress)
+                        status_text.markdown(f"**Status:** Running {display_names.get(agent_name, agent_name)} (Iteration {iteration})...")
+                        
+                        # Update agent status
+                        status_md = "**Agent Pipeline:**\n"
+                        for key, display_name in display_names.items():
+                            status_md += f"- {agent_states[key]} {display_name}\n"
+                        agent_status.markdown(status_md)
+                        
+                        # Update time
+                        elapsed = time.time() - start_time
+                        time_elapsed.markdown(f"⏱️ **Elapsed Time:** {elapsed/60:.1f} minutes")
+                    
+                    # Initialize display
+                    status_text.markdown("**Status:** Initializing agents...")
+                    progress_bar.progress(10)
+                    agent_status.markdown("""
+                    **Agent Pipeline:**
+                    - ⏸️ Waiting EDA Agent
+                    - ⏸️ Waiting Feature Engineering
+                    - ⏸️ Waiting Model Tuning
+                    - ⏸️ Waiting Evaluator
+                    - ⏸️ Waiting Judge
+                    """)
+                    
+                    # Run pipeline with progress callback
+                    results = orchestrator.run_pipeline(
+                        data=df,
+                        target_column=target_column,
+                        task_type=task_type,
+                        domain=domain,
+                        progress_callback=update_progress
+                    )
+                    
+                    # Mark all complete
+                    for key in agent_states.keys():
+                        agent_states[key] = "✅ Complete"
+                    agent_status.markdown("""
+                    **Agent Pipeline:**
+                    - ✅ Complete EDA Agent
+                    - ✅ Complete Feature Engineering
+                    - ✅ Complete Model Tuning
+                    - ✅ Complete Evaluator
+                    - ✅ Complete Judge
+                    """)
+                    
+                    progress_bar.progress(100)
+                    status_text.text("✅ Pipeline completed!")
+                    
+                    # Store results in session state
+                    st.session_state['results'] = results
+                    st.session_state['task_type'] = task_type
+                    st.session_state['orchestrator'] = orchestrator
+                    
+                    # Save run to history
+                    dataset_name = uploaded_file.name if uploaded_file else "demo_dataset"
+                    run_id = run_history.save_run(
+                        results=results,
+                        dataset_name=dataset_name,
+                        task_type=task_type,
+                        domain=domain,
+                        target_column=target_column,
+                        dataset_shape=df.shape
+                    )
+                    st.session_state['current_run_id'] = run_id
+                    
+                    st.success("🎉 Pipeline completed successfully!")
+                    st.balloons()
+                    
+                    # Display quick summary
+                    final_results = results['final_results']
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric(
+                            "Model Approved",
+                            "✅ Yes" if final_results['model_approved'] else "❌ No"
                         )
-                        
-                        progress_bar.progress(100)
-                        status_text.text("✅ Pipeline completed!")
-                        
-                        # Store results in session state
-                        st.session_state['results'] = results
-                        st.session_state['task_type'] = task_type
-                        st.session_state['orchestrator'] = orchestrator
-                        
-                        # Save run to history
-                        dataset_name = uploaded_file.name if uploaded_file else "demo_dataset"
-                        run_id = run_history.save_run(
-                            results=results,
-                            dataset_name=dataset_name,
-                            task_type=task_type,
-                            domain=domain,
-                            target_column=target_column,
-                            dataset_shape=df.shape
+                    with col2:
+                        st.metric(
+                            "Best Model",
+                            final_results['best_model']
                         )
-                        st.session_state['current_run_id'] = run_id
-                        
-                        st.success("🎉 Pipeline completed successfully!")
-                        st.balloons()
-                        
-                        # Display quick summary
-                        final_results = results['final_results']
-                        
-                        col1, col2, col3, col4 = st.columns(4)
-                        with col1:
-                            st.metric(
-                                "Model Approved",
-                                "✅ Yes" if final_results['model_approved'] else "❌ No"
-                            )
-                        with col2:
-                            st.metric(
-                                "Best Model",
-                                final_results['best_model']
-                            )
-                        with col3:
-                            st.metric(
-                                "Performance",
-                                f"{final_results['performance_score']:.3f}"
-                            )
-                        with col4:
-                            st.metric(
-                                "Iterations",
-                                results['pipeline_info']['total_iterations']
-                            )
-                        
-                    except Exception as e:
-                        st.error(f"❌ Error running pipeline: {str(e)}")
-                        st.exception(e)
+                    with col3:
+                        st.metric(
+                            "Performance",
+                            f"{final_results['performance_score']:.3f}"
+                        )
+                    with col4:
+                        st.metric(
+                            "Iterations",
+                            results['pipeline_info']['total_iterations']
+                        )
+                    
+                except Exception as e:
+                    st.error(f"❌ Error running pipeline: {str(e)}")
+                    st.exception(e)
     
     with tab2:
         st.header("📊 Pipeline Results")

@@ -70,7 +70,9 @@ class JudgeAgent(BaseAgent):
         )
         
         # LLM-based decision support (if enabled)
+        llm_model_recommendations = []
         if self.llm_enabled:
+            # Get deployment decision
             llm_decision = self.llm_reason(
                 prompt="Should this model be deployed or retrained? Provide reasoning.",
                 context={
@@ -81,6 +83,44 @@ class JudgeAgent(BaseAgent):
                 }
             )
             judgment["llm_decision_support"] = llm_decision
+            
+            # Get model recommendations for next iteration
+            if judgment["requires_retrain"]:
+                current_model = input_data.get("model_metadata", {}).get("model_name", "unknown")
+                all_models_tried = input_data.get("all_models_tried", [])
+                
+                llm_model_suggestion = self.llm_reason(
+                    prompt=f"""Based on the current model performance, suggest which ML algorithms to try in the next iteration.
+                    
+Current model: {current_model}
+Task type: {task_type}
+Performance: {metrics}
+Models already tried: {all_models_tried}
+
+Available algorithms:
+- random_forest: Good for complex non-linear relationships, handles missing data well
+- xgboost: Excellent for structured data, handles imbalanced datasets, gradient boosting
+- logistic_regression: Fast, interpretable, works well for linearly separable data
+- svm: Good for small datasets with clear margins, kernel methods
+- decision_tree: Simple, interpretable, fast training, prone to overfitting
+- neural_network/mlp: Powerful for complex patterns, requires more data, slower training
+- linear_regression (regression only): Simple, interpretable baseline
+- ridge (regression only): Linear with regularization
+
+Respond with ONLY a comma-separated list of 2-3 algorithm names from the list above. Example: xgboost,random_forest,neural_network""",
+                    context={
+                        "current_model": current_model,
+                        "metrics": metrics,
+                        "task_type": task_type,
+                        "all_models_tried": all_models_tried
+                    }
+                )
+                
+                # Parse LLM response to extract model names
+                llm_model_recommendations = self._parse_model_recommendations(
+                    llm_model_suggestion, task_type
+                )
+                self.logger.info(f"LLM recommends models for next iteration: {llm_model_recommendations}")
         
         results = {
             "judgment": judgment,
@@ -88,6 +128,7 @@ class JudgeAgent(BaseAgent):
             "performance_trend": performance_trend,
             "retrain_count": self.retrain_count,
             "max_retrain_cycles": self.max_retrain_cycles,
+            "recommended_models": llm_model_recommendations,  # NEW: LLM model suggestions
             "recommendations": self._generate_recommendations(
                 judgment, deployment_ready, task_type
             ),
@@ -311,4 +352,51 @@ class JudgeAgent(BaseAgent):
     def get_performance_history(self) -> List[Dict[str, Any]]:
         """Get full performance history"""
         return self.performance_history
+    
+    def _parse_model_recommendations(self, llm_response: str, task_type: str) -> List[str]:
+        """
+        Parse LLM response to extract model recommendations
+        
+        Args:
+            llm_response: Raw LLM response text
+            task_type: 'classification' or 'regression'
+            
+        Returns:
+            List of valid model names
+        """
+        # Valid models by task type
+        valid_models = {
+            "classification": [
+                "random_forest", "xgboost", "logistic_regression", "svm", 
+                "decision_tree", "neural_network", "mlp"
+            ],
+            "regression": [
+                "random_forest", "xgboost", "linear_regression", "ridge", 
+                "svm", "decision_tree", "neural_network", "mlp"
+            ]
+        }
+        
+        valid_for_task = valid_models.get(task_type, [])
+        
+        # Parse response - look for model names
+        recommendations = []
+        response_lower = llm_response.lower().strip()
+        
+        # Split by common delimiters
+        parts = response_lower.replace('\n', ',').replace(';', ',').split(',')
+        
+        for part in parts:
+            part = part.strip()
+            # Check if part contains any valid model name
+            for model in valid_for_task:
+                if model in part:
+                    if model not in recommendations:
+                        recommendations.append(model)
+        
+        # If no valid models found, return default
+        if not recommendations:
+            self.logger.warning(f"Could not parse model recommendations from LLM. Using defaults.")
+            recommendations = valid_for_task[:2]  # Use first 2 models as default
+        
+        return recommendations[:3]  # Limit to 3 models
 

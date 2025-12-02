@@ -26,9 +26,11 @@ agents:
 
   model_tuning:
     enabled: true
-    algorithms:
+    algorithms: # Default models (overridden by LLM if reasoning_enabled: true)
+      # Available: random_forest, xgboost, logistic_regression, svm, decision_tree, neural_network
       - "random_forest"
       - "xgboost"
+      - "decision_tree"
       - "logistic_regression"
     cv_folds: 5
     max_trials: 50

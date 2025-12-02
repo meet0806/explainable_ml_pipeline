@@ -54,6 +54,23 @@ class FeatureEngineeringAgent(BaseAgent):
         X = df.drop(columns=[target_column])
         y = df[target_column]
         
+        # Check for and handle missing values in target
+        if y.isnull().any():
+            self.logger.warning(f"Target column '{target_column}' has {y.isnull().sum()} missing values. Dropping rows with missing targets.")
+            # Drop rows where target is missing
+            valid_idx = ~y.isnull()
+            X = X[valid_idx]
+            y = y[valid_idx]
+        
+        # Encode target if it's categorical (for classification tasks)
+        target_encoder = None
+        if task_type == "classification" and y.dtype == 'object':
+            self.logger.info(f"Encoding categorical target column '{target_column}' with values: {y.unique()}")
+            target_encoder = LabelEncoder()
+            y = pd.Series(target_encoder.fit_transform(y), index=y.index, name=target_column)
+            self.encoders[f"target_{target_column}"] = target_encoder
+            self.logger.info(f"Target encoded to: {y.unique()}")
+        
         # Feature engineering pipeline
         X_processed = X.copy()
         
@@ -82,6 +99,11 @@ class FeatureEngineeringAgent(BaseAgent):
         )
         self.selected_features = selected_features
         
+        # Final safety check: ensure no NaN values remain
+        if X_selected.isnull().any().any():
+            self.logger.warning("NaN values detected after feature engineering. Filling remaining NaN with 0.")
+            X_selected = X_selected.fillna(0)
+        
         # Combine with target
         processed_df = X_selected.copy()
         processed_df[target_column] = y.values
@@ -95,6 +117,8 @@ class FeatureEngineeringAgent(BaseAgent):
             "num_features_final": len(selected_features),
             "scaling_method": self.fe_config.get("scaling_method", "standard"),
             "encoding_method": self.fe_config.get("encoding_method", "onehot"),
+            "target_encoder": target_encoder,
+            "target_encoded": target_encoder is not None,
             "feature_engineering_summary": self._generate_summary(X, X_selected),
         }
         

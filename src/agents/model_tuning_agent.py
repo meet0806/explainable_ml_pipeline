@@ -8,8 +8,10 @@ import numpy as np
 from typing import Any, Dict, List, Optional, Tuple
 from sklearn.model_selection import cross_val_score, GridSearchCV, RandomizedSearchCV
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from sklearn.linear_model import LogisticRegression, LinearRegression, Ridge
 from sklearn.svm import SVC, SVR
+from sklearn.neural_network import MLPClassifier, MLPRegressor
 from xgboost import XGBClassifier, XGBRegressor
 from sklearn.metrics import make_scorer, accuracy_score, f1_score, mean_squared_error, r2_score
 import joblib
@@ -55,8 +57,14 @@ class ModelTuningAgent(BaseAgent):
         X = df.drop(columns=[target_column])
         y = df[target_column]
         
-        # Get algorithms to try
-        algorithms = self.tuning_config.get("algorithms", ["random_forest", "xgboost"])
+        # Get algorithms to try - use LLM suggestions if available
+        suggested_algorithms = input_data.get("suggested_algorithms", [])
+        if suggested_algorithms:
+            self.logger.info(f"🧠 Using LLM-suggested algorithms: {suggested_algorithms}")
+            algorithms = suggested_algorithms
+        else:
+            algorithms = self.tuning_config.get("algorithms", ["random_forest", "xgboost"])
+            self.logger.info(f"Using default algorithms: {algorithms}")
         
         # Train and tune models
         model_results = []
@@ -189,6 +197,22 @@ class ModelTuningAgent(BaseAgent):
                     'kernel': ['rbf', 'linear'],
                     'gamma': ['scale', 'auto'],
                 }
+            elif algorithm == "decision_tree":
+                model = DecisionTreeClassifier(random_state=42)
+                params = {
+                    'max_depth': [5, 10, 20, None],
+                    'min_samples_split': [2, 5, 10],
+                    'min_samples_leaf': [1, 2, 4],
+                    'criterion': ['gini', 'entropy'],
+                }
+            elif algorithm == "neural_network" or algorithm == "mlp":
+                model = MLPClassifier(random_state=42, max_iter=1000)
+                params = {
+                    'hidden_layer_sizes': [(50,), (100,), (50, 50), (100, 50)],
+                    'activation': ['relu', 'tanh'],
+                    'alpha': [0.0001, 0.001, 0.01],
+                    'learning_rate': ['constant', 'adaptive'],
+                }
             else:
                 raise ValueError(f"Unknown classification algorithm: {algorithm}")
                 
@@ -211,6 +235,33 @@ class ModelTuningAgent(BaseAgent):
                 model = Ridge(random_state=42)
                 params = {
                     'alpha': [0.1, 1.0, 10.0],
+                }
+            elif algorithm == "ridge":
+                model = Ridge(random_state=42)
+                params = {
+                    'alpha': [0.01, 0.1, 1.0, 10.0, 100.0],
+                }
+            elif algorithm == "svm":
+                model = SVR()
+                params = {
+                    'C': [0.1, 1, 10],
+                    'kernel': ['rbf', 'linear'],
+                    'gamma': ['scale', 'auto'],
+                }
+            elif algorithm == "decision_tree":
+                model = DecisionTreeRegressor(random_state=42)
+                params = {
+                    'max_depth': [5, 10, 20, None],
+                    'min_samples_split': [2, 5, 10],
+                    'min_samples_leaf': [1, 2, 4],
+                }
+            elif algorithm == "neural_network" or algorithm == "mlp":
+                model = MLPRegressor(random_state=42, max_iter=1000)
+                params = {
+                    'hidden_layer_sizes': [(50,), (100,), (50, 50), (100, 50)],
+                    'activation': ['relu', 'tanh'],
+                    'alpha': [0.0001, 0.001, 0.01],
+                    'learning_rate': ['constant', 'adaptive'],
                 }
             else:
                 raise ValueError(f"Unknown regression algorithm: {algorithm}")
