@@ -1,7 +1,6 @@
 # Explainable ML Pipelines with Agentic AI
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A modular, agentic machine learning pipeline system designed for **explainable AI** in **Healthcare** and **Finance** domains. The system uses autonomous agents that communicate through structured JSON messages to perform end-to-end ML workflows including EDA, feature engineering, model tuning, evaluation, and deployment decisions.
 
@@ -376,10 +375,6 @@ def _get_model_and_params(self, algorithm, task_type):
 2. **Missing Dependencies**: Run `pip install -r requirements.txt`
 3. **Data Format**: Verify target column name matches dataset
 4. **Memory Issues**: Reduce `max_trials` in config for large datasets
-
-## 📝 License
-
-This project is licensed under the MIT License - see LICENSE file for details.
 
 ## 🤝 Contributing
 
