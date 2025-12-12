@@ -151,6 +151,23 @@ results = orchestrator.run_pipeline(
 orchestrator.save_final_model('models/my_model.pkl')
 ```
 
+#### Streamlit Web UI
+
+Launch the interactive web interface:
+
+```bash
+streamlit run app.py
+```
+
+Then open your browser to `http://localhost:8501` to:
+- Upload datasets through drag-and-drop
+- Configure pipeline settings
+- Run ML pipelines interactively
+- View real-time results and visualizations
+- Explore SHAP/LIME explainability analysis
+- Compare multiple runs
+- Download results and models
+
 ## 📚 Agent Descriptions
 
 ### 1. **EDA Agent**
