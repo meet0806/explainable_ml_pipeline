@@ -18,6 +18,13 @@ sys.path.append('.')
 
 from src.orchestrator import Orchestrator
 from src.utils.run_history import RunHistory
+from src.utils.explainability_viz import (
+    plot_shap_feature_importance,
+    plot_lime_feature_importance,
+    plot_lime_instance_explanation,
+    create_explainability_summary_table,
+    compare_explainability_methods
+)
 
 # Page config
 st.set_page_config(
@@ -678,6 +685,176 @@ def main():
             # Detailed metrics
             with st.expander("📋 Detailed Metrics"):
                 st.json(metrics)
+            
+            # Explainability Section
+            st.subheader("🔍 Model Explainability")
+            
+            # Get explainability data from evaluator results
+            explainability = final_results.get('explainability', {})
+            
+            if explainability and explainability.get('methods_available'):
+                # Summary table
+                summary_df = create_explainability_summary_table(explainability)
+                if not summary_df.empty:
+                    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+                
+                # Tabs for different explainability methods
+                exp_tabs = st.tabs(["📊 Feature Importance", "🎯 SHAP Analysis", "🔬 LIME Analysis", "⚖️ Method Comparison"])
+                
+                with exp_tabs[0]:
+                    st.markdown("### Built-in Feature Importance")
+                    feature_imp = explainability.get('feature_importance', {})
+                    if feature_imp:
+                        # Create bar chart
+                        features = list(feature_imp.keys())
+                        values = list(feature_imp.values())
+                        
+                        fig = go.Figure(data=[
+                            go.Bar(
+                                x=values,
+                                y=features,
+                                orientation='h',
+                                marker=dict(color='skyblue'),
+                                text=[f'{v:.4f}' for v in values],
+                                textposition='auto',
+                            )
+                        ])
+                        
+                        fig.update_layout(
+                            title="Top 10 Most Important Features",
+                            xaxis_title="Importance Score",
+                            yaxis_title="Features",
+                            height=max(400, len(features) * 40),
+                            yaxis={'categoryorder': 'total ascending'}
+                        )
+                        
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.info("Feature importance not available for this model type")
+                
+                with exp_tabs[1]:
+                    st.markdown("### SHAP (SHapley Additive exPlanations)")
+                    st.caption("SHAP values show the impact of each feature on the model's predictions")
+                    
+                    if 'shap' in explainability.get('methods_available', []):
+                        shap_importance = explainability.get('shap_feature_importance', {})
+                        shap_summary = explainability.get('shap_summary', {})
+                        
+                        if shap_importance:
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Samples Analyzed", shap_summary.get('samples_analyzed', 'N/A'))
+                            with col2:
+                                st.metric("Top Feature", shap_summary.get('top_feature', 'N/A'))
+                            with col3:
+                                st.metric("Status", "✅ Complete" if shap_summary.get('analysis_complete') else "⚠️ Partial")
+                            
+                            # SHAP importance plot
+                            fig_shap = plot_shap_feature_importance(shap_importance)
+                            if fig_shap:
+                                st.plotly_chart(fig_shap, use_container_width=True)
+                            
+                            with st.expander("ℹ️ Understanding SHAP Values"):
+                                st.markdown("""
+                                **SHAP (SHapley Additive exPlanations)** values:
+                                - Based on game theory (Shapley values)
+                                - Show each feature's contribution to the prediction
+                                - Higher values = more important for the model
+                                - Consistent and theoretically sound
+                                - Works for any machine learning model
+                                """)
+                        else:
+                            st.info("SHAP analysis not yet computed")
+                    else:
+                        shap_msg = explainability.get('shap_values', 'SHAP not enabled')
+                        if 'not available' in str(shap_msg).lower() or 'not installed' in str(shap_msg).lower():
+                            st.warning("📦 SHAP library not installed. Install with: `pip install shap`")
+                        else:
+                            st.info("SHAP analysis not enabled in configuration")
+                
+                with exp_tabs[2]:
+                    st.markdown("### LIME (Local Interpretable Model-agnostic Explanations)")
+                    st.caption("LIME explains individual predictions by approximating the model locally")
+                    
+                    if 'lime' in explainability.get('methods_available', []):
+                        lime_importance = explainability.get('lime_feature_importance', {})
+                        lime_summary = explainability.get('lime_summary', {})
+                        lime_sample_explanations = explainability.get('lime_sample_explanations', [])
+                        
+                        if lime_importance:
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Instances Explained", lime_summary.get('samples_explained', 'N/A'))
+                            with col2:
+                                st.metric("Top Feature", lime_summary.get('top_feature', 'N/A'))
+                            with col3:
+                                st.metric("Status", "✅ Complete" if lime_summary.get('analysis_complete') else "⚠️ Partial")
+                            
+                            # LIME aggregate importance plot
+                            fig_lime = plot_lime_feature_importance(lime_importance)
+                            if fig_lime:
+                                st.plotly_chart(fig_lime, use_container_width=True)
+                            
+                            # Individual instance explanations
+                            if lime_sample_explanations:
+                                st.markdown("#### Sample Instance Explanations")
+                                for exp in lime_sample_explanations:
+                                    with st.expander(f"Instance {exp['instance_index']}"):
+                                        fig_instance = plot_lime_instance_explanation(exp, exp['instance_index'])
+                                        if fig_instance:
+                                            st.plotly_chart(fig_instance, use_container_width=True)
+                            
+                            with st.expander("ℹ️ Understanding LIME"):
+                                st.markdown("""
+                                **LIME (Local Interpretable Model-agnostic Explanations)**:
+                                - Explains individual predictions
+                                - Creates a simple, interpretable model locally around the prediction
+                                - Shows which features pushed the prediction in positive/negative direction
+                                - Model-agnostic (works with any model)
+                                - Great for understanding specific cases
+                                """)
+                        else:
+                            st.info("LIME analysis not yet computed")
+                    else:
+                        lime_msg = explainability.get('lime_explanations', 'LIME not enabled')
+                        if 'not available' in str(lime_msg).lower() or 'not installed' in str(lime_msg).lower():
+                            st.warning("📦 LIME library not installed. Install with: `pip install lime`")
+                        else:
+                            st.info("LIME analysis not enabled in configuration")
+                
+                with exp_tabs[3]:
+                    st.markdown("### Comparing Explainability Methods")
+                    st.caption("Different methods may rank features differently based on their approach")
+                    
+                    # Comparison chart
+                    fig_compare = compare_explainability_methods(explainability)
+                    if fig_compare:
+                        st.plotly_chart(fig_compare, use_container_width=True)
+                        
+                        st.markdown("#### Key Differences:")
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                            st.markdown("**Feature Importance**")
+                            st.caption("• Model's built-in measure")
+                            st.caption("• Global interpretation")
+                            st.caption("• Fast to compute")
+                        
+                        with col2:
+                            st.markdown("**SHAP**")
+                            st.caption("• Game theory based")
+                            st.caption("• Global & local view")
+                            st.caption("• Theoretically sound")
+                        
+                        with col3:
+                            st.markdown("**LIME**")
+                            st.caption("• Local approximation")
+                            st.caption("• Instance-specific")
+                            st.caption("• Model-agnostic")
+                    else:
+                        st.info("Need at least 2 explainability methods to compare")
+            else:
+                st.info("🔧 Explainability analysis not available. Enable in config.yaml:\n```yaml\nevaluator:\n  explainability_methods: [\"shap\", \"lime\"]\n```")
             
             # Recommendations
             st.subheader("💡 Recommendations")

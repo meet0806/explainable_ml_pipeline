@@ -158,16 +158,38 @@ class FeatureEngineeringAgent(BaseAgent):
         
         categorical_cols = df_encoded.select_dtypes(include=['object', 'category']).columns
         
+        # Determine which columns are high-cardinality (too many unique values)
+        HIGH_CARDINALITY_THRESHOLD = 50  # Max unique values for one-hot encoding
+        
+        low_cardinality_cols = []
+        high_cardinality_cols = []
+        
+        for col in categorical_cols:
+            n_unique = df_encoded[col].nunique()
+            if n_unique > HIGH_CARDINALITY_THRESHOLD:
+                high_cardinality_cols.append(col)
+                self.logger.warning(f"Column '{col}' has {n_unique} unique values (high cardinality). Using label encoding instead of one-hot.")
+            else:
+                low_cardinality_cols.append(col)
+        
         if encoding_method == "onehot":
-            # One-hot encoding
-            df_encoded = pd.get_dummies(
-                df_encoded, 
-                columns=categorical_cols, 
-                drop_first=True,
-                prefix=categorical_cols.tolist()
-            )
+            # One-hot encoding only for low cardinality columns
+            if low_cardinality_cols:
+                df_encoded = pd.get_dummies(
+                    df_encoded, 
+                    columns=low_cardinality_cols, 
+                    drop_first=True,
+                    prefix=low_cardinality_cols
+                )
+            
+            # Label encoding for high cardinality columns
+            for col in high_cardinality_cols:
+                le = LabelEncoder()
+                df_encoded[col] = le.fit_transform(df_encoded[col].astype(str))
+                self.encoders[col] = le
+                
         elif encoding_method == "label":
-            # Label encoding
+            # Label encoding for all categorical columns
             for col in categorical_cols:
                 le = LabelEncoder()
                 df_encoded[col] = le.fit_transform(df_encoded[col].astype(str))

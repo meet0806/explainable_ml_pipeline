@@ -12,7 +12,7 @@ This project implements an **agentic AI architecture** where specialized agents 
 ### Key Features
 
 - **🤖 Autonomous Agents**: 5 specialized agents (EDA, Feature Engineering, Model Tuning, Evaluator, Judge)
-- **📊 Explainability First**: Built-in SHAP and LIME integration placeholders
+- **📊 Explainability First**: Full SHAP and LIME integration for model interpretability
 - **🔄 Iterative Improvement**: Automatic retraining loop based on performance
 - **🏥💰 Domain-Aware**: Specialized processing for Healthcare and Finance
 - **📝 Structured Communication**: JSON-based agent messaging protocol
@@ -190,7 +190,8 @@ Comprehensive model evaluation and explainability:
 
 - Performance metrics (accuracy, precision, recall, F1, ROC-AUC, RMSE, R², etc.)
 - Confusion matrices and classification reports
-- SHAP and LIME integration (placeholders)
+- **Full SHAP and LIME integration** for model interpretability
+- Feature importance analysis with multiple methods
 - Fairness checks
 - Performance recommendations
 
@@ -383,17 +384,5 @@ For questions or issues, please open a GitHub issue.
 - Inspired by autonomous agent architectures
 - Designed for healthcare and finance ML applications
 
-## 🗺️ Roadmap
-
-- [ ] Full SHAP/LIME integration
-- [ ] Real-time model monitoring
-- [ ] Distributed training support
-- [ ] Web UI for pipeline management
-- [ ] Auto-ML capabilities
-- [ ] Model versioning and registry
-- [ ] A/B testing framework
-- [ ] Drift detection implementation
-
----
 
 **Built with ❤️ for Explainable AI in Healthcare and Finance**

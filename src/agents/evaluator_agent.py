@@ -15,6 +15,19 @@ from sklearn.model_selection import train_test_split
 import warnings
 warnings.filterwarnings('ignore')
 
+try:
+    import shap
+    SHAP_AVAILABLE = True
+except ImportError:
+    SHAP_AVAILABLE = False
+
+try:
+    import lime
+    import lime.lime_tabular
+    LIME_AVAILABLE = True
+except ImportError:
+    LIME_AVAILABLE = False
+
 from src.core.base_agent import BaseAgent
 
 
@@ -214,38 +227,157 @@ class EvaluatorAgent(BaseAgent):
             }
             explainability["methods_available"].append("feature_importance")
         
-        # SHAP integration placeholder
+        # SHAP integration
         if "shap" in self.eval_config.get("explainability_methods", []):
-            try:
-                # TODO: Integrate SHAP
-                # import shap
-                # explainer = shap.TreeExplainer(model)
-                # shap_values = explainer.shap_values(X_test[:100])
-                # explainability["shap_values"] = "SHAP analysis completed"
-                # explainability["methods_available"].append("shap")
-                
-                explainability["shap_values"] = "SHAP integration placeholder - install and configure shap library"
-            except Exception as e:
-                self.logger.warning(f"SHAP analysis failed: {e}")
+            if not SHAP_AVAILABLE:
+                self.logger.warning("SHAP library not installed. Install with: pip install shap")
+                explainability["shap_values"] = "SHAP not available - install shap library"
+            else:
+                try:
+                    self.logger.info("Computing SHAP values...")
+                    
+                    # Sample data if too large (SHAP can be slow)
+                    sample_size = min(100, len(X_test))
+                    X_sample = X_test.iloc[:sample_size]
+                    
+                    # Choose appropriate explainer based on model type
+                    if hasattr(model, 'tree_') or hasattr(model, 'estimators_'):
+                        # Tree-based models (RF, XGBoost, Decision Tree)
+                        explainer = shap.TreeExplainer(model)
+                        shap_values = explainer.shap_values(X_sample)
+                    else:
+                        # Other models (use KernelExplainer with background data)
+                        background = shap.sample(X_train, min(100, len(X_train)))
+                        explainer = shap.KernelExplainer(model.predict, background)
+                        shap_values = explainer.shap_values(X_sample)
+                    
+                    # Handle multi-class output
+                    if isinstance(shap_values, list) and len(shap_values) > 0:
+                        # Multi-class: use class 1 (positive class for binary)
+                        shap_values_array = np.array(shap_values[1] if len(shap_values) > 1 else shap_values[0])
+                    else:
+                        shap_values_array = np.array(shap_values)
+                    
+                    # Calculate mean absolute SHAP values for feature importance
+                    if hasattr(shap_values_array, 'shape'):
+                        if len(shap_values_array.shape) == 3:
+                            # (samples, features, classes) -> average over samples and classes
+                            mean_shap = np.abs(shap_values_array).mean(axis=(0, 2))
+                        elif len(shap_values_array.shape) == 2:
+                            # (samples, features) -> average over samples
+                            mean_shap = np.abs(shap_values_array).mean(axis=0)
+                        elif len(shap_values_array.shape) == 1:
+                            # (features,) -> use directly
+                            mean_shap = np.abs(shap_values_array)
+                        else:
+                            raise ValueError(f"Unexpected SHAP values shape: {shap_values_array.shape}")
+                        
+                        if feature_names:
+                            shap_importance = dict(zip(feature_names, mean_shap))
+                        else:
+                            shap_importance = dict(zip(
+                                [f"feature_{i}" for i in range(len(mean_shap))],
+                                mean_shap
+                            ))
+                        
+                        # Sort and get top features
+                        shap_importance = dict(
+                            sorted(shap_importance.items(), key=lambda x: x[1], reverse=True)[:10]
+                        )
+                        
+                        explainability["shap_feature_importance"] = {
+                            k: float(v) for k, v in shap_importance.items()
+                        }
+                        explainability["shap_summary"] = {
+                            "samples_analyzed": sample_size,
+                            "top_feature": max(shap_importance, key=shap_importance.get),
+                            "analysis_complete": True
+                        }
+                        explainability["methods_available"].append("shap")
+                        self.logger.info(f"SHAP analysis completed for {sample_size} samples")
+                    
+                except Exception as e:
+                    self.logger.warning(f"SHAP analysis failed: {e}")
+                    explainability["shap_values"] = f"SHAP analysis failed: {str(e)}"
         
-        # LIME integration placeholder
+        # LIME integration
         if "lime" in self.eval_config.get("explainability_methods", []):
-            try:
-                # TODO: Integrate LIME
-                # import lime
-                # import lime.lime_tabular
-                # explainer = lime.lime_tabular.LimeTabularExplainer(
-                #     X_train.values,
-                #     feature_names=feature_names,
-                #     mode='classification'
-                # )
-                # explanation = explainer.explain_instance(X_test.iloc[0].values, model.predict_proba)
-                # explainability["lime_explanations"] = "LIME analysis completed"
-                # explainability["methods_available"].append("lime")
-                
-                explainability["lime_explanations"] = "LIME integration placeholder - install and configure lime library"
-            except Exception as e:
-                self.logger.warning(f"LIME analysis failed: {e}")
+            if not LIME_AVAILABLE:
+                self.logger.warning("LIME library not installed. Install with: pip install lime")
+                explainability["lime_explanations"] = "LIME not available - install lime library"
+            else:
+                try:
+                    self.logger.info("Computing LIME explanations...")
+                    
+                    # Determine mode based on model type
+                    if hasattr(model, 'predict_proba'):
+                        mode = 'classification'
+                        predict_fn = model.predict_proba
+                    else:
+                        mode = 'regression'
+                        predict_fn = model.predict
+                    
+                    # Create LIME explainer
+                    explainer = lime.lime_tabular.LimeTabularExplainer(
+                        X_train.values,
+                        feature_names=feature_names if feature_names else [f"feature_{i}" for i in range(X_train.shape[1])],
+                        mode=mode,
+                        random_state=42
+                    )
+                    
+                    # Explain multiple instances (first 3 as examples)
+                    num_samples = min(3, len(X_test))
+                    lime_explanations_list = []
+                    
+                    for idx in range(num_samples):
+                        explanation = explainer.explain_instance(
+                            X_test.iloc[idx].values,
+                            predict_fn,
+                            num_features=10
+                        )
+                        
+                        # Extract feature contributions
+                        exp_list = explanation.as_list()
+                        lime_explanations_list.append({
+                            "instance_index": int(idx),
+                            "feature_contributions": [
+                                {"feature": feat, "contribution": float(contrib)}
+                                for feat, contrib in exp_list
+                            ]
+                        })
+                    
+                    # Aggregate LIME feature importance across samples
+                    feature_importance_lime = {}
+                    for exp in lime_explanations_list:
+                        for feat_contrib in exp["feature_contributions"]:
+                            feat_name = feat_contrib["feature"].split()[0]  # Extract feature name
+                            contrib = abs(feat_contrib["contribution"])
+                            if feat_name in feature_importance_lime:
+                                feature_importance_lime[feat_name] += contrib
+                            else:
+                                feature_importance_lime[feat_name] = contrib
+                    
+                    # Average and sort
+                    for key in feature_importance_lime:
+                        feature_importance_lime[key] /= num_samples
+                    
+                    feature_importance_lime = dict(
+                        sorted(feature_importance_lime.items(), key=lambda x: x[1], reverse=True)[:10]
+                    )
+                    
+                    explainability["lime_feature_importance"] = feature_importance_lime
+                    explainability["lime_sample_explanations"] = lime_explanations_list
+                    explainability["lime_summary"] = {
+                        "samples_explained": num_samples,
+                        "top_feature": max(feature_importance_lime, key=feature_importance_lime.get) if feature_importance_lime else None,
+                        "analysis_complete": True
+                    }
+                    explainability["methods_available"].append("lime")
+                    self.logger.info(f"LIME analysis completed for {num_samples} samples")
+                    
+                except Exception as e:
+                    self.logger.warning(f"LIME analysis failed: {e}")
+                    explainability["lime_explanations"] = f"LIME analysis failed: {str(e)}"
         
         return explainability
     
